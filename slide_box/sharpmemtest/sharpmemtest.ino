@@ -20,12 +20,12 @@ All text above, must be included in any redistribution
 #include <Adafruit_SharpMem.h>
 
 // any pins can be used
-#define SHARP_SCK  27
-#define SHARP_MOSI 14
-#define SHARP_SS   12
+#define SHARP_SCK  18
+#define SHARP_MOSI 23
+#define SHARP_SS   5
 
 // Set the size of the display here, e.g. 144x168!
-Adafruit_SharpMem display(SHARP_SCK, SHARP_MOSI, SHARP_SS, 240, 400);
+Adafruit_SharpMem display(SHARP_SCK, SHARP_MOSI, SHARP_SS, 400, 240);
 // The currently-available SHARP Memory Display (144x168 pixels)
 // requires > 4K of microcontroller RAM; it WILL NOT WORK on Arduino Uno
 // or other <4K "classic" devices!  The original display (96x96 pixels)
