@@ -1,4 +1,5 @@
-
+//PINOUT on ESP32 use pin 22 23
+//on NANO use A4 A5
 // Basic demo for accelerometer readings from Adafruit LIS3DH
 
 #include <Wire.h>
