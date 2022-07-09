@@ -4,20 +4,22 @@
 #include <SPI.h>
 #include <Adafruit_LIS3DH.h>
 #include <Adafruit_Sensor.h>
-
-
+// Used for software SPI
 #define LIS3DH_CLK 13
 #define LIS3DH_MISO 12
 #define LIS3DH_MOSI 11
 // Used for hardware & software SPI
 #define LIS3DH_CS 10
+Adafruit_LIS3DH lis = Adafruit_LIS3DH();
+
  /*#if defined(ARDUINO_ARCH_SAMD)
     // for Zero, output on USB Serial console, remove line below if using programming port to program the Zero!
      #define Serial SerialUSB 
  #endif*/
-Adafruit_LIS3DH lis = Adafruit_LIS3DH();
 
 void setup(void) {
+  Serial.begin(115200);
+  while (!Serial) delay(10);
 }
 
 void loop() { 
@@ -101,17 +103,17 @@ void loop() {
       
                                                                       //mils1=micros()-mils0;
       //VAULTER JUST TOOK OFF SO WE HAVE TIME BEFORE SENDING DATA
-      //delay(10000);
-      #if defined(ARDUINO_ARCH_SAMD)
-        #define Serial SerialUSB
-      #endif
+      delay(10000);
+//      #if defined(ARDUINO_ARCH_SAMD)
+//        #define Serial SerialUSB
+//      #endif
       
       //PRINT OUT DATA
       while(true){
-        #ifndef ESP8266
-          while (!Serial);     // will pause Zero, Leonardo, etc until serial console opens
-        #endif
-        Serial.begin(115200);
+//        #ifndef ESP8266
+//          while (!Serial);     // will pause Zero, Leonardo, etc until serial console opens
+//        #endif
+//        Serial.begin(9600);
         int b=0;
         k=poleHitBoxAt+halfNumSamples+1;
         
