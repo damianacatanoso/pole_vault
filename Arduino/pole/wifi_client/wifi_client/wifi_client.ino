@@ -1,5 +1,5 @@
 //========================================================
-// Title:     Wifi - Server
+// Title:     Wifi - Client
 //
 // Authors:   Damiana Catanoso Gutierrez
 //            Daniel Gutierrez
@@ -8,42 +8,36 @@
 // Created:   7/9/2022
 //========================================================
 
-#include <esp_wifi.h>
-#include <WiFi.h>
-#include <WiFiClient.h>
-#include <Wire.h>
+#include <WiFiNINA.h>
 #include <stdio.h>
-
-WiFiServer server(80);
-WiFiClient client;
-
-IPAddress ip(192, 168, 1, 200);
-IPAddress gateway(192, 168, 1, 1);
-IPAddress subnet(255, 255, 0, 0);
+#include <Wire.h>
 
 const char *ssid = "pole_vault";    // SSID 
-const char *pass = "pole_vault";    // password 
+const char *pass = "pole_vault";    // password
 
-// calculate buffer size:
-// 360 points  [min = -1600, max = 1600] *3 coordinates (int16_t: 2 bytes, max 32,767)
-// + 1 delta_t [min = 0, max = 500] (int16_t: 2 bytes, max 32,767) 
-// = 1081 variables * 2 bytes = 2162 bytes
-// 2162 + 4 header + 2 crc = 2168
-#define RX_BUFFER_SIZE        2168
-uint8_t RX_BUFFER[RX_BUFFER_SIZE];
+bool WiFi_FIRST_CONNECT = true;
+uint8_t FAILED_CONNECT_TO_SERVER = 0;
+wl_status_t state;
+
+IPAddress server(192, 168, 4, 1);         // the fix IP address of the server for server
+uint16_t port = 80;
+WiFiClient Client;
 
 #define lowbyte(v)            ((unsigned char) (v))
 #define highbyte(v)           ((unsigned char) (((unsigned int) (v)) >> 8))
 
+#define TX_BUFFER_SIZE        2168
+uint8_t TX_BUFFER[TX_BUFFER_SIZE];
+
 /////////////////////////////////////////////////////////////////////////////////////
-int number_points = 360;
-int size_points = number_points*3 + 1;
+int const number_points = 360;
+int const size_points = number_points*3 + 1;
 int16_t point_X[number_points];
 int16_t point_Y[number_points];
 int16_t point_Z[number_points];
 int16_t delta_t;
 
-bool triggering_event = true;
+bool data_ready = false;
 
 /////////////////////////////////////////////////////////////////////////////////////
 // Encoding function to fill last two bytes of TX_BUFFER and decode RX_BUFFER
@@ -92,85 +86,56 @@ unsigned short calculate_crc(unsigned short crc_accum, unsigned char *data_blk_p
   return crc_accum;
 }
 
-/////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////
 
-// Initialize the TX and RX packets
-void bufferInit() {
-  for(int i = 0; i < RX_BUFFER_SIZE; i++) {
-    RX_BUFFER[i] = B00000000;
-  }
+
+
+void sendTelemetry()
+{  
+  unsigned short rx_crc_value = 0, tx_crc_value = 0;
+  tx_crc_value = calculate_crc(tx_crc_value, TX_BUFFER, TX_BUFFER_SIZE-2);
+
+  TX_BUFFER[TX_BUFFER_SIZE-2] =  lowbyte(tx_crc_value);
+  TX_BUFFER[TX_BUFFER_SIZE-1] = highbyte(tx_crc_value);
+  
+  while(client.read() >= 0) ;        // flush the receive buffer
+  client.write(&TX_BUFFER[0], TX_BUFFER_SIZE); 
+  
+//  Serial.println("Sending heartbeat to Server    "); 
+//  vTaskDelay(20/portTICK_PERIOD_MS);                                                             
 }
 
-void bufferSend() {
-  Serial.print("\nSending command to MMICI");
-  TMP1_TIME = micros();
-  bufferSendToClient();
-  TMP2_TIME = micros();      
-}
-
-
-
-// Print a given buffer
-void bufferPrint(uint8_t *buf, int buf_size) {
-  Serial.print("\n*** Data: ");
-  for(int i = 0; i < buf_size; i++) {
-    Serial.print(buf[i], HEX);
-    Serial.print(" ");
-  }
-  Serial.print('\n');
-}
-
-
-// Serial.print information contained in RX_BUFFER
-void bufferConversion(uint8_t *buf) {
-  int16_t temp[size_points];
-  byte tickHigh, tickLow;
+void update_tx_buffer() {
   bool is_X = true;
   bool is_Y = false;
   bool is_Z = false;
-  for (int i=0;i<(size_points-1);i++)
-  {
-    tickLow = buf[4+2*i];
-    tickHigh = buf[5+2*i];
-    temp[i] = (int16_t)((tickHigh << 8) & 0xFF00) + (tickLow & 0x00FF);    
-//    Serial.print(temp);
-//    Serial.print('\t');
+  uint16_t point_value;
+
+  TX_BUFFER[0] = B10111111;
+  TX_BUFFER[1] = B11111101;
+  TX_BUFFER[2] = B11110000;
+  TX_BUFFER[3] = B00001111;
+
+  for (int i=0;i<(size_points-1);i++) {
     if (is_X) {
-      point_X = temp[i];
+      point_value = point_X[i/3 + 1];
       is_X = false;
       is_Y = true;
     } if (is_Y) {
-      point_Y = temp[i];
+      point_value = point_Y[i/3 + 1];
       is_Y = false;
       is_Z = true;
     } if (is_Z) {
-      point_Z = temp[i];
+      point_value = point_Z[i/3];
       is_Z = false;
       is_X = true;
     }
+    TX_BUFFER[4+2*i] = lowbyte((uint16_t)(point_value));
+    TX_BUFFER[5+2*i] = highbyte((uint16_t)(point_value));
+    
   }
-
-  tickLow = buf[RX_BUFFER_SIZE-3];
-  tickHigh = buf[RX_BUFFER_SIZE-2];
-  temp[size_points] = (int16_t)((tickHigh << 8) & 0xFF00) + (tickLow & 0x00FF);   
-  delta_t = temp[size_points];
   
-//  Serial.print("|");
-//  Serial.print(temp[0]);
-//  Serial.print(" \t");
-//  Serial.print(temp[1]);
-//  Serial.print(" \t|");
-//  Serial.print(temp[2]);
-//  Serial.print(" \t");
-//  Serial.print(temp[3]);
-//  Serial.print(" \t|");
-//  Serial.print(temp[4]);
-//  Serial.print(" \t");
-//  Serial.print(temp[5]);
-//  Serial.print(" \t|");
-//  Serial.print(temp[6]);
-//  Serial.print(" \t");
-//  Serial.print(temp[7]);
-
-//  Serial.println(" |");
+  TX_BUFFER[TX_BUFFER_SIZE-3] = lowbyte((uint16_t)(delta_t));
+  TX_BUFFER[TX_BUFFER_SIZE-2] = highbyte((uint16_t)(delta_t));
+  
 }
